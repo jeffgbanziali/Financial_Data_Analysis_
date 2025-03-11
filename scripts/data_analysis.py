@@ -17,12 +17,16 @@ spark = SparkSession.builder.appName("StockAnalysis").getOrCreate()
 print("📌 Chargement des données historiques...")
 df = spark.read.option("header", "true").option("inferSchema", "true").csv("../data/financial_data_cleaned.csv")
 
-# 📌 Sélectionner uniquement les colonnes utiles
+# 📌 Sélectionner uniquement les colonnes utiles et partitionner les données par Date pour améliorer les performances
 df_selected = df.select("Date", "Close_AAPL", "Close_TSLA", "Close_GOOGL", "Close_MSFT")
 df_selected = df_selected.withColumn("Date", col("Date").cast("date"))
+df_selected = df_selected.repartition(10, "Date")  # Partitionner par Date
+
+# 📌 Mettre en cache les données pour éviter des recalculs
+df_selected.cache()
 
 # 📌 Définition des fenêtres Spark
-windowRolling = Window.orderBy("Date").rowsBetween(-5, 0)
+windowRolling = Window.partitionBy("Date").orderBy("Date").rowsBetween(-5, 0)
 
 # 📌 Calcul des indicateurs SMA et Volatilité
 print("📌 Calcul des indicateurs SMA et Volatilité...")
@@ -37,7 +41,7 @@ df_features = df_selected.withColumn("SMA_AAPL", avg("Close_AAPL").over(windowRo
 
 df_clean = df_features.fillna(0)
 
-# 📌 Vérifier si les modèles existent avant de les charger
+# 📌 Charger les modèles
 models = {}
 stocks = ["AAPL", "TSLA", "GOOGL", "MSFT"]
 
@@ -51,7 +55,8 @@ for stock in stocks:
 
 # 📌 Générer les futures dates (Mars 2025 - Mars 2026)
 print("📌 Génération des dates futures...")
-future_dates = [datetime.date(2025, 3, 1) + datetime.timedelta(days=i) for i in range(365)]
+last_date = df_selected.agg({"Date": "max"}).collect()[0][0]
+future_dates = [last_date + datetime.timedelta(days=i) for i in range(1, 366)]  # 1 an de prévisions
 future_df = spark.createDataFrame([(d,) for d in future_dates], ["Date"])
 
 # 📌 Vérifier si les données historiques ne sont pas vides
@@ -88,8 +93,8 @@ for stock in stocks:
         # 📌 Fusionner les prédictions avec `future_df`
         future_df = future_df.join(predictions, on="Date", how="left")
 
-# 📌 Sauvegarde des prédictions
+# 📌 Sauvegarder les prédictions
 df_predictions = future_df.toPandas()
-df_predictions.to_csv("../results/predictions.csv", index=False)
+df_predictions.to_parquet("../results/predictions.parquet", index=False)
 
-print("✅ Prédictions terminées et enregistrées dans `../results/predictions.csv`")
+print("✅ Prédictions terminées et enregistrées dans `../results/predictions.parquet`")

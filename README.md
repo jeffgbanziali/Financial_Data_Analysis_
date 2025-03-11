@@ -42,8 +42,8 @@ Ce projet utilise **Apache Spark** et **PySpark** pour analyser de grandes quant
 
 1. **Cloner le dépôt** :
    ```sh
-   git clone https://github.com/ton-repo/projet_spark.git
-   cd projet_spark
+   git https://github.com/jeffgbanziali/Financial_Data_Analysis_.git
+   cd Financial_Data_Analysis_
    ```
 2. **Installer les dépendances** :
    ```sh
